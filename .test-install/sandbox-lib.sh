@@ -461,13 +461,17 @@ PROBE_EOF
 # pre-dsh-* (pre 渠道, prerelease) 只能**显式**传入: latest 那条路按 GitHub 的
 # 定义就看不见 prerelease, 所以基线永远 pin 不到 pre 产物——「能测 pre」与
 # 「拿 pre 当基线」在这里是两件事, 前者放行, 后者仍然走不通。
+# 发布物所在的仓库 (默认上游)。fork 上验证自己发出来的产物时要能改指:
+# 默认值一字不改, 只有显式 export DSH_RELEASE_REPO=<owner>/<repo> 才换源。
+# 与 .github/scripts/patch-matrix.sh 的 PATCH_MATRIX_ASSET_REPO 同一思路。
+DSH_RELEASE_REPO="${DSH_RELEASE_REPO:-ErEbusE/dsh-termux}"
 resolve_release_tag() {
   local t="${1:-latest}"
   command -v curl >/dev/null 2>&1 || { echo "!! 解析 latest 需要 curl (pkg install curl), 或改用 baseline set <具体tag>" >&2; return 1; }
   case "$t" in
     latest)
       local loc
-      loc="$(curl -sIo /dev/null -w '%{redirect_url}' https://github.com/ErEbusE/dsh-termux/releases/latest)"
+      loc="$(curl -sIo /dev/null -w '%{redirect_url}' https://github.com/$DSH_RELEASE_REPO/releases/latest)"
       t="${loc##*/}"
       case "$t" in dsh-*-*-*) ;; *)
         echo "!! 无法解析 latest 指向的实际 tag (got: ${loc:-<空>})" >&2; return 1 ;;
@@ -494,7 +498,7 @@ fetch_release_assets() {
     tmp="$dl/.$a.part"
     rm -f "$tmp"
     if ! wget -t 2 -O "$tmp" \
-      "https://github.com/ErEbusE/dsh-termux/releases/download/$tag/$a"; then
+      "https://github.com/$DSH_RELEASE_REPO/releases/download/$tag/$a"; then
       rm -f "$tmp"
       echo "!! wget $a 失败 (tag=$tag; 网络受限先 export https_proxy/http_proxy)" >&2
       echo "   已保留 $dl/$a 的原有内容, 未被这次失败破坏。" >&2
