@@ -127,16 +127,29 @@ sandbox_init() {
 # 完全可能与基线是同一 release, 二进制按设计相同 (教训: 用户重装 1.2.2 后
 # 旧断言「沙箱 == 本地正在运行的安装即 FAIL」误报; 反过来, 同字节覆写会变 inode/mtime,
 # 四元组照样抓得住)。起点快照在 sandbox_init 里取。
+# 起点就不存在 (设备上没装这棵树) 时**不是**失败: 记 WARN 跳过, 理由见 live_sentinel。
 LIVE_NODE="/data/data/com.termux/files/home/.local/opt/dsh-termux-runtime/node/bin/node"
 LIVE_PRISTINE=""
+LIVE_PRESENT=0
 live_snapshot() {
   LIVE_PRISTINE=""
+  LIVE_PRESENT=0
   [ -x "$LIVE_NODE" ] || return 0
+  LIVE_PRESENT=1
   LIVE_PRISTINE="$(stat -c '%i.%Y.%s' "$LIVE_NODE").$(sha256sum "$LIVE_NODE" | cut -d' ' -f1)"
 }
 live_sentinel() {
   local live_now
-  [ -x "$LIVE_NODE" ] || fail "本地正在运行的 dsh runtime 缺少 node ($LIVE_NODE)"
+  # 起点就没有这颗 node: 哨兵的校验前提不成立, 记 WARN 后跳过。典型场景是只有
+  # 旧式 npm 全局布局 (= 没有 ~/.local/opt/dsh-termux-runtime 这棵树) 的设备。
+  # 此前这里直接 fail, 六条路线末尾会一起红, 把前面真正的断言结果全遮住,
+  # 且文案「缺少 node」指向一个本就不该存在的东西。
+  # 破坏性场景一点不丢: 起点**有**、跑完没了/被改, 仍在下面 fail。
+  if [ "$LIVE_PRESENT" != 1 ]; then
+    warn_record "本地没有运行中的 dsh runtime ($LIVE_NODE 不存在), 跳过「未被触碰」哨兵"
+    return 0
+  fi
+  [ -x "$LIVE_NODE" ] || fail "本地正在运行的 dsh runtime 的 node 在路线运行期间消失 ($LIVE_NODE)"
   "$LIVE_NODE" --version >/dev/null 2>&1 || fail "本地正在运行的 dsh runtime 的 node 无法运行 (是不是被误补丁了?)"
   live_now="$(stat -c '%i.%Y.%s' "$LIVE_NODE").$(sha256sum "$LIVE_NODE" | cut -d' ' -f1)"
   if [ -n "$LIVE_PRISTINE" ]; then
